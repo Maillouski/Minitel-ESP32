@@ -323,7 +323,6 @@ void loop() {
 }
 
 void loopBridge() {
-  // Configuration du port RS232 (par exemple, sur UART_NUM_1)
   uart_config_t uart_config = {
     .baud_rate = rs232Baudrate,
     .data_bits = (uart_word_length_t)rs232DataBits,
@@ -339,28 +338,31 @@ void loopBridge() {
   uint8_t buf[128], buf2[128];
 
   while (connectionType == 4) {  // Tant que le mode Bridge est actif
-    // Lecture depuis le port Minitel via l'API HardwareSerial
-    int len = minitel.readBytes(buf, sizeof(buf));
+    int len = 0;
+    // Utilisation de MINITEL_PORT pour lire les données, car il expose available() et read()
+    while (MINITEL_PORT.available() > 0 && len < sizeof(buf)) {
+      buf[len++] = MINITEL_PORT.read();
+    }
     if (len > 0) {
-      // Envoi sur le RS232 via la fonction bas niveau
       uart_write_bytes(RS232_PORT, (const char*)buf, len);
     }
-    // Lecture depuis le port RS232 via l'API bas niveau
+    
     int len2 = uart_read_bytes(RS232_PORT, buf2, sizeof(buf2), 20 / portTICK_PERIOD_MS);
     if (len2 > 0) {
-      // Envoi sur le port Minitel via l'API HardwareSerial
-      minitel.write(buf2, len2);
+      // On peut également utiliser MINITEL_PORT.write() directement
+      MINITEL_PORT.write(buf2, len2);
     }
-    // Permet de sortir du mode Bridge (par exemple CTRL+R sur le Minitel)
-    if (minitel.available() > 0) {
-      byte key = minitel.readByte();
+    
+    // Vérification pour sortir du mode Bridge (par exemple, CTRL+R)
+    if (MINITEL_PORT.available() > 0) {
+      byte key = MINITEL_PORT.read();
       if (key == 18) {  // CTRL+R
         break;
       }
     }
   }
   uart_driver_delete(RS232_PORT);
-  // Réinitialisation après le mode Bridge
+  // Réinitialisation de l'interface Minitel après le mode Bridge
   modeVideotex();
   minitel.newXY(1, 1);
   minitel.newScreen();
@@ -368,6 +370,7 @@ void loopBridge() {
   minitel.pageMode();
   reset();
 }
+
 
 
 
