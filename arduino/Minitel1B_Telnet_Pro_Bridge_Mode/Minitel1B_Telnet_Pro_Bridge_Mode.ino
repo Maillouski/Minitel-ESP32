@@ -6,6 +6,7 @@
 #include <ArduinoJson.h>
 #include <WebSocketsClient.h> // src: https://github.com/Links2004/arduinoWebSockets.git
 #include "sshClient.h"
+#include "driver/uart.h" // Necessary to use that additional Serial Port
 
 #define MINITEL_BAUD_TRY  4800
 
@@ -28,6 +29,15 @@
 #define HTTP_SERVER_CLOSED           9
 
 #define MINITEL_PORT Serial2
+
+#define RS232_PORT UART_NUM_2
+// Paramètres RS232 configurables (valeurs par défaut)
+uint16_t rs232Baudrate  = 9600;
+uint16_t rs232DataBits  = UART_DATA_8_BITS;        // par exemple 8 bits
+uint16_t rs232Parity    = UART_PARITY_DISABLE;       // 0 = disable, 1 = odd, 2 = even
+uint16_t rs232StopBits  = UART_STOP_BITS_1;          // 1 ou 2
+uint16_t rs232FlowCtrl  = UART_HW_FLOWCTRL_CTS_RTS;    // 0 = disable, 1 = RTS/CTS
+
 
 // #define DEBUG true
 #define DEBUG_PORT Serial
@@ -308,7 +318,58 @@ void loop() {
     loopSsh();
   else if (connectionType == 3) // SERIAL
     loopSerial();
+  else if (connectionType == 4)  // Bridge
+    loopBridge();
 }
+
+void loopBridge() {
+  // Configuration du port RS232 (par exemple, sur UART_NUM_1)
+  uart_config_t uart_config = {
+    .baud_rate = rs232Baudrate,
+    .data_bits = (uart_word_length_t)rs232DataBits,
+    .parity    = (uart_parity_t)rs232Parity,
+    .stop_bits = (uart_stop_bits_t)rs232StopBits,
+    .flow_ctrl = (uart_hw_flowcontrol_t)rs232FlowCtrl,
+    .rx_flow_ctrl_thresh = 122,
+  };
+  uart_param_config(RS232_PORT, &uart_config);
+  uart_set_pin(RS232_PORT, 25, 26, 27, 14);  // TX=25, RX=26, RTS=27, CTS=14
+  uart_driver_install(RS232_PORT, 2048, 0, 0, NULL, 0);
+
+  uint8_t buf[128], buf2[128];
+
+  while (connectionType == 4) {  // Tant que le mode Bridge est actif
+    // Lecture depuis le port Minitel via l'API HardwareSerial
+    int len = minitel.readBytes(buf, sizeof(buf));
+    if (len > 0) {
+      // Envoi sur le RS232 via la fonction bas niveau
+      uart_write_bytes(RS232_PORT, (const char*)buf, len);
+    }
+    // Lecture depuis le port RS232 via l'API bas niveau
+    int len2 = uart_read_bytes(RS232_PORT, buf2, sizeof(buf2), 20 / portTICK_PERIOD_MS);
+    if (len2 > 0) {
+      // Envoi sur le port Minitel via l'API HardwareSerial
+      minitel.write(buf2, len2);
+    }
+    // Permet de sortir du mode Bridge (par exemple CTRL+R sur le Minitel)
+    if (minitel.available() > 0) {
+      byte key = minitel.readByte();
+      if (key == 18) {  // CTRL+R
+        break;
+      }
+    }
+  }
+  uart_driver_delete(RS232_PORT);
+  // Réinitialisation après le mode Bridge
+  modeVideotex();
+  minitel.newXY(1, 1);
+  minitel.newScreen();
+  minitel.echo(true);
+  minitel.pageMode();
+  reset();
+}
+
+
 
 void loopTelnet() {
 
@@ -372,6 +433,35 @@ void loopSerial() {
     reset();
   }
 }
+
+void setRS232Params() {
+  uint16_t temp;
+  // Modification du baudrate
+  temp = rs232Baudrate;
+  setIntParameter(14, 20, temp);  // position choisie (colonne 14, ligne 20)
+  rs232Baudrate = temp;
+  
+  // Modification du nombre de bits de données
+  temp = rs232DataBits;
+  setIntParameter(14, 21, temp);
+  rs232DataBits = temp;
+  
+  // Modification de la parité (0=disable, 1=odd, 2=even)
+  temp = rs232Parity;
+  setIntParameter(14, 22, temp);
+  rs232Parity = temp;
+  
+  // Modification du nombre de stop bits (1 ou 2)
+  temp = rs232StopBits;
+  setIntParameter(14, 23, temp);
+  rs232StopBits = temp;
+  
+  // Modification du contrôle de flux (0=disable, 1=RTS/CTS)
+  temp = rs232FlowCtrl;
+  setIntParameter(14, 24, temp);
+  rs232FlowCtrl = temp;
+}
+
 
 String inputString(String defaultValue, int& exitCode) {
   return inputString(defaultValue, exitCode, ' ');
@@ -586,6 +676,7 @@ void showPrefs() {
 
   minitel.newXY(1,24); minitel.attributs(CARACTERE_ROUGE); minitel.print("(C) 2023 Louis H. - Francesco Sblendorio");
   minitel.attributs(CARACTERE_BLANC);
+
 }
 
 void printPassword(String password) {
@@ -839,8 +930,9 @@ void displayPresets(String title) {
 }
 
 void cycleConnectionType(int x, int y) {
-  connectionType = (connectionType + 1) % 4;
-  minitel.newXY(x,y); writeConnectionType(connectionType);
+  connectionType = (connectionType + 1) % 5; // 0: Telnet, 1: Websocket, 2: SSH, 3: Serial, 4: Bridge
+  minitel.newXY(x, y);
+  writeConnectionType(connectionType);
 }
 
 void switchParameter(int x, int y, bool &destination) {
@@ -917,41 +1009,77 @@ void writeBool(bool value) {
 }
 
 void writeConnectionType(byte connectionType) {
+  // Telnet
   if (connectionType == 0) {
-    minitel.attributs(CARACTERE_BLANC); minitel.attributs(INVERSION_FOND);
+    minitel.attributs(CARACTERE_BLANC);
+    minitel.attributs(INVERSION_FOND);
   } else {
-    minitel.attributs(CARACTERE_ROUGE); minitel.attributs(FOND_NORMAL);
+    minitel.attributs(CARACTERE_ROUGE);
+    minitel.attributs(FOND_NORMAL);
   }
   minitel.print("Telnet");
-  minitel.attributs(CARACTERE_ROUGE); minitel.attributs(FOND_NORMAL); minitel.print("/");
 
+  minitel.attributs(CARACTERE_ROUGE);
+  minitel.attributs(FOND_NORMAL);
+  minitel.print("/");
+
+  // Websocket
   if (connectionType == 1) {
-    minitel.attributs(CARACTERE_BLANC); minitel.attributs(INVERSION_FOND);
+    minitel.attributs(CARACTERE_BLANC);
+    minitel.attributs(INVERSION_FOND);
   } else {
-    minitel.attributs(CARACTERE_ROUGE); minitel.attributs(FOND_NORMAL);
+    minitel.attributs(CARACTERE_ROUGE);
+    minitel.attributs(FOND_NORMAL);
   }
   minitel.print("Websocket");
-   
-  minitel.attributs(CARACTERE_ROUGE); minitel.attributs(FOND_NORMAL); minitel.print("/");
 
+  minitel.attributs(CARACTERE_ROUGE);
+  minitel.attributs(FOND_NORMAL);
+  minitel.print("/");
+
+  // SSH
   if (connectionType == 2) {
-    minitel.attributs(CARACTERE_BLANC); minitel.attributs(INVERSION_FOND);
+    minitel.attributs(CARACTERE_BLANC);
+    minitel.attributs(INVERSION_FOND);
   } else {
-    minitel.attributs(CARACTERE_ROUGE); minitel.attributs(FOND_NORMAL);
+    minitel.attributs(CARACTERE_ROUGE);
+    minitel.attributs(FOND_NORMAL);
   }
   minitel.print("SSH");
 
-  minitel.attributs(CARACTERE_ROUGE); minitel.attributs(FOND_NORMAL); minitel.print("/");
+  minitel.attributs(CARACTERE_ROUGE);
+  minitel.attributs(FOND_NORMAL);
+  minitel.print("/");
 
+  // Serial
   if (connectionType == 3) {
-    minitel.attributs(CARACTERE_BLANC); minitel.attributs(INVERSION_FOND);
+    minitel.attributs(CARACTERE_BLANC);
+    minitel.attributs(INVERSION_FOND);
   } else {
-    minitel.attributs(CARACTERE_ROUGE); minitel.attributs(FOND_NORMAL);
+    minitel.attributs(CARACTERE_ROUGE);
+    minitel.attributs(FOND_NORMAL);
   }
   minitel.print("Serial");
 
-  minitel.attributs(CARACTERE_BLANC); minitel.attributs(FOND_NORMAL);
+  minitel.attributs(CARACTERE_ROUGE);
+  minitel.attributs(FOND_NORMAL);
+  minitel.print("/");
+
+  // Bridge (nouveau mode)
+  if (connectionType == 4) {
+    minitel.attributs(CARACTERE_BLANC);
+    minitel.attributs(INVERSION_FOND);
+  } else {
+    minitel.attributs(CARACTERE_ROUGE);
+    minitel.attributs(FOND_NORMAL);
+  }
+  minitel.print("Bridge");
+
+  // Réinitialisation des attributs
+  minitel.attributs(CARACTERE_BLANC);
+  minitel.attributs(FOND_NORMAL);
 }
+
 
 void separateUrl(String url) {
 
