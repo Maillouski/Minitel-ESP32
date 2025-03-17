@@ -868,9 +868,10 @@ void showPrefs() {
   minitel.newXY(1,22);
   minitel.attributs(INVERSION_FOND); minitel.print(" SPACE "); minitel.attributs(FOND_NORMAL); minitel.print(" to connect   ");
   minitel.attributs(INVERSION_FOND); minitel.print(" CTRL+R "); minitel.attributs(FOND_NORMAL); minitel.print(" to restart");
-  minitel.newXY(24,23); minitel.print("or TS+CONNEXION");
+  //minitel.newXY(24,23); minitel.print("or TS+CONNEXION");
 
-  minitel.newXY(1,24); minitel.attributs(CARACTERE_ROUGE); minitel.print("(C) 2023 Louis H. - Francesco Sblendorio");
+  minitel.newXY(1,23); minitel.attributs(CARACTERE_ROUGE); minitel.print("(C) 2023 Louis H., Francesco Sblendorio");
+  minitel.newXY(1,24); minitel.attributs(CARACTERE_ROUGE); minitel.print("(C) 2024 Nicolas Mailloux");
   minitel.attributs(CARACTERE_BLANC);
 
 }
@@ -1045,29 +1046,29 @@ int setPrefs() {
       } else if (key == '3') {
         setParameter(9, 7, url, false, false);
         if (url.length() <= 40 - 9) {
-          minitel.newXY(1, 8);
+          minitel.newXY(1, 7);
           clearLineFromCursor();
         }
       } else if (key == '4') {
-        switchParameter(12, 9, scroll);
+        switchParameter(12, 8, scroll);
       } else if (key == '5') {
-        switchParameter(12, 10, echo);
+        switchParameter(12, 9, echo);
       } else if (key == '6') {
-        switchParameter(12, 11, col80);
+        switchParameter(12, 10, col80);
       } else if (key == 'a' || key == 'A') {
-        switchParameter(37, 10, altcharset);
+        switchParameter(37, 9, altcharset);
       } else if (key == 'c' || key == 'C') {
-        switchParameter(37, 9, prestel);
+        switchParameter(37, 8, prestel);
       } else if (key == '7') {
         cycleConnectionType(14, 12);
       } else if (key == '8') {
         uint16_t temp = ping_ms;
-        setIntParameter(14, 14, temp);
+        setIntParameter(14, 13, temp);
         ping_ms = temp;
       } else if (key == '9') {
-        setParameter(14, 15, protocol, false, true);
+        setParameter(14, 14, protocol, false, true);
       } else if (key == 'u' || key == 'U') {
-        setParameter(14, 16, sshUser, false, true);
+        setParameter(14, 15, sshUser, false, true);
       } else if (key == 'p' || key == 'P') {
         if (serverStatus == HTTP_SERVER_CLOSED && WiFi.status() == WL_CONNECTED) {
           debugPrintln("Server begin");
@@ -1075,7 +1076,7 @@ int setPrefs() {
           serverStatus = HTTP_SERVER_READY;
         }
 
-        int inputExitCode = setParameter(14, 17, sshPass, true, true, manageHttpConnection);
+        int inputExitCode = setParameter(14, 16, sshPass, true, true, manageHttpConnection);
         if (inputExitCode == 0) {
           privKey = false;
           sshPrivKey = "";
