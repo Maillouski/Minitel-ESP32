@@ -31,12 +31,33 @@
 #define MINITEL_PORT Serial2
 
 #define RS232_PORT UART_NUM_2
+
 // Paramètres RS232 configurables (valeurs par défaut)
-uint16_t rs232Baudrate  = 9600;
+uint32_t rs232Baudrate  = 9600;
 uint16_t rs232DataBits  = UART_DATA_8_BITS;        // par exemple 8 bits
 uint16_t rs232Parity    = UART_PARITY_DISABLE;       // 0 = disable, 1 = odd, 2 = even
 uint16_t rs232StopBits  = UART_STOP_BITS_1;          // 1 ou 2
 uint16_t rs232FlowCtrl  = UART_HW_FLOWCTRL_CTS_RTS;    // 0 = disable, 1 = RTS/CTS
+
+// Liste des valeurs possibles pour chaque paramètre
+static const uint32_t BAUD_LIST[]    = { 300, 600, 1200, 2400, 4800, 9600, 19200, 28800, 38400, 57600, 115200 };
+static const uint8_t  DATA_LIST[]    = { 5, 6, 7, 8 };
+static const char*    PARITY_LIST[]  = { "N", "O", "E" }; // None, Odd, Even
+static const uint8_t  STOP_LIST[]    = { 1, 2 };
+static const char*    FLOW_LIST[]    = { "None", "RTS/CTS" };
+
+#define BAUD_FIELD_WIDTH   6   // max "115200" -> 6 chiffres
+#define DATA_FIELD_WIDTH   2   // données affichées (ex: "7")
+#define PARITY_FIELD_WIDTH 4   // "None" ou "Even"
+#define STOP_FIELD_WIDTH   1   // "1" ou "2"
+#define FLOW_FIELD_WIDTH   7   // "RTS/CTS" (7 caractères)
+
+// Indices courants pour chaque paramètre (pour naviguer facilement)
+static int baudIndex   = 5; // 9600 par défaut => BAUD_LIST[5] = 9600
+static int dataIndex   = 2; // 7 bits par défaut => DATA_LIST[2] = 7
+static int parityIndex = 0; // N => PARITY_LIST[0] = "N"
+static int stopIndex   = 0; // 1 => STOP_LIST[0] = 1
+static int flowIndex   = 1; // RTS/CTS => FLOW_LIST[1]
 
 
 // #define DEBUG true
@@ -318,11 +339,11 @@ void loop() {
     loopSsh();
   else if (connectionType == 3) // SERIAL
     loopSerial();
-  else if (connectionType == 4)  // Bridge
-    loopBridge();
+  else if (connectionType == 4)  // RS232
+    loopRS232();
 }
 
-void loopBridge() {
+void loopRS232() {
   uart_config_t uart_config = {
     .baud_rate = rs232Baudrate,
     .data_bits = (uart_word_length_t)rs232DataBits,
@@ -337,7 +358,7 @@ void loopBridge() {
 
   uint8_t buf[128], buf2[128];
 
-  while (connectionType == 4) {  // Tant que le mode Bridge est actif
+  while (connectionType == 4) {  // Tant que le mode RS232 est actif
     int len = 0;
     // Utilisation de MINITEL_PORT pour lire les données, car il expose available() et read()
     while (MINITEL_PORT.available() > 0 && len < sizeof(buf)) {
@@ -353,7 +374,7 @@ void loopBridge() {
       MINITEL_PORT.write(buf2, len2);
     }
     
-    // Vérification pour sortir du mode Bridge (par exemple, CTRL+R)
+    // Vérification pour sortir du mode RS232 (par exemple, CTRL+R)
     if (MINITEL_PORT.available() > 0) {
       byte key = MINITEL_PORT.read();
       if (key == 18) {  // CTRL+R
@@ -362,7 +383,7 @@ void loopBridge() {
     }
   }
   uart_driver_delete(RS232_PORT);
-  // Réinitialisation de l'interface Minitel après le mode Bridge
+  // Réinitialisation de l'interface Minitel après le mode RS232
   modeVideotex();
   minitel.newXY(1, 1);
   minitel.newScreen();
@@ -438,32 +459,182 @@ void loopSerial() {
 }
 
 void setRS232Params() {
-  uint16_t temp;
-  // Modification du baudrate
-  temp = rs232Baudrate;
-  setIntParameter(14, 20, temp);  // position choisie (colonne 14, ligne 20)
-  rs232Baudrate = temp;
-  
-  // Modification du nombre de bits de données
-  temp = rs232DataBits;
-  setIntParameter(14, 21, temp);
-  rs232DataBits = temp;
-  
-  // Modification de la parité (0=disable, 1=odd, 2=even)
-  temp = rs232Parity;
-  setIntParameter(14, 22, temp);
-  rs232Parity = temp;
-  
+  // Modification du baud rate
+  {
+    uint32_t tempBaud = rs232Baudrate;
+    setIntParameter(14, 20, tempBaud);  // Utilise la version template pour T = uint32_t
+    rs232Baudrate = tempBaud;
+  }
+
+  // Modification du nombre de data bits (stocké de 0 à 3, affiché de 5 à 8)
+  {
+    uint16_t tempData = rs232DataBits;
+    setIntParameter(14, 21, tempData);  // Utilise la version template pour T = uint16_t
+    rs232DataBits = tempData;
+  }
+
+  // Modification de la parité (0: N, 1: O, 2: E)
+  {
+    uint16_t tempParity = rs232Parity;
+    setIntParameter(14, 22, tempParity);
+    rs232Parity = tempParity;
+  }
+
   // Modification du nombre de stop bits (1 ou 2)
-  temp = rs232StopBits;
-  setIntParameter(14, 23, temp);
-  rs232StopBits = temp;
-  
-  // Modification du contrôle de flux (0=disable, 1=RTS/CTS)
-  temp = rs232FlowCtrl;
-  setIntParameter(14, 24, temp);
-  rs232FlowCtrl = temp;
+  {
+    uint16_t tempStop = rs232StopBits;
+    setIntParameter(14, 23, tempStop);
+    rs232StopBits = tempStop;
+  }
+
+  // Modification du contrôle de flux (0: None, 1: RTS/CTS)
+  {
+    uint16_t tempFlow = rs232FlowCtrl;
+    setIntParameter(14, 24, tempFlow);
+    rs232FlowCtrl = tempFlow;
+  }
 }
+
+// --- Fonctions d'update de chaque paramètre ---
+// Affiche le baud rate (option B) sur une zone fixe
+void updateRS232Baud() {
+  minitel.newXY(1,4);
+  // Affichage de la lettre 'B' avec le style souhaité :
+  minitel.attributs(CARACTERE_BLANC);
+  minitel.graphicMode();
+  minitel.writeByte(0x6A);
+  minitel.textMode();
+  minitel.attributs(INVERSION_FOND);
+  minitel.print("B");
+  minitel.attributs(FOND_NORMAL);
+  minitel.graphicMode();
+  minitel.writeByte(0x35);
+  minitel.textMode();
+  minitel.print(" Baud: ");
+  minitel.attributs(CARACTERE_CYAN);
+  String baudStr = String(BAUD_LIST[baudIndex]);
+  minitel.print(baudStr);
+  // Effacer les caractères résiduels (champ de largeur fixe)
+  for (int i = baudStr.length(); i < BAUD_FIELD_WIDTH; i++) {
+    minitel.print(" ");
+  }
+}
+
+
+// Affiche les data bits (option D)
+void updateRS232Data() {
+  minitel.newXY(1,5);
+  // Affichage de la lettre 'D'
+  minitel.attributs(CARACTERE_BLANC);
+  minitel.graphicMode();
+  minitel.writeByte(0x6A);
+  minitel.textMode();
+  minitel.attributs(INVERSION_FOND);
+  minitel.print("D");
+  minitel.attributs(FOND_NORMAL);
+  minitel.graphicMode();
+  minitel.writeByte(0x35);
+  minitel.textMode();
+  minitel.print(" Data Bits: ");
+  minitel.attributs(CARACTERE_CYAN);
+  String dataStr = String(DATA_LIST[dataIndex]);
+  minitel.print(dataStr);
+  for (int i = dataStr.length(); i < DATA_FIELD_WIDTH; i++) {
+    minitel.print(" ");
+  }
+}
+
+
+// Affiche la parité (option P)
+void updateRS232Parity() {
+  minitel.newXY(1,6);
+  // Affichage de la lettre 'P'
+  minitel.attributs(CARACTERE_BLANC);
+  minitel.graphicMode();
+  minitel.writeByte(0x6A);
+  minitel.textMode();
+  minitel.attributs(INVERSION_FOND);
+  minitel.print("P");
+  minitel.attributs(FOND_NORMAL);
+  minitel.graphicMode();
+  minitel.writeByte(0x35);
+  minitel.textMode();
+  minitel.print(" Parity: ");
+  minitel.attributs(CARACTERE_CYAN);
+  String parityStr = String(PARITY_LIST[parityIndex]);
+  minitel.print(parityStr);
+  for (int i = parityStr.length(); i < PARITY_FIELD_WIDTH; i++) {
+    minitel.print(" ");
+  }
+}
+
+
+// Affiche le nombre de stop bits (option S)
+void updateRS232Stop() {
+  minitel.newXY(1,7);
+  // Affichage de la lettre 'S'
+  minitel.attributs(CARACTERE_BLANC);
+  minitel.graphicMode();
+  minitel.writeByte(0x6A);
+  minitel.textMode();
+  minitel.attributs(INVERSION_FOND);
+  minitel.print("S");
+  minitel.attributs(FOND_NORMAL);
+  minitel.graphicMode();
+  minitel.writeByte(0x35);
+  minitel.textMode();
+  minitel.print(" Stop Bits: ");
+  minitel.attributs(CARACTERE_CYAN);
+  String stopStr = String(STOP_LIST[stopIndex]);
+  minitel.print(stopStr);
+  for (int i = stopStr.length(); i < STOP_FIELD_WIDTH; i++) {
+    minitel.print(" ");
+  }
+}
+
+
+// Affiche le contrôle de flux (option F)
+void updateRS232Flow() {
+  minitel.newXY(1,8);
+  // Affichage de la lettre 'F'
+  minitel.attributs(CARACTERE_BLANC);
+  minitel.graphicMode();
+  minitel.writeByte(0x6A);
+  minitel.textMode();
+  minitel.attributs(INVERSION_FOND);
+  minitel.print("F");
+  minitel.attributs(FOND_NORMAL);
+  minitel.graphicMode();
+  minitel.writeByte(0x35);
+  minitel.textMode();
+  minitel.print(" Flow Ctrl: ");
+  minitel.attributs(CARACTERE_CYAN);
+  String flowStr = String(FLOW_LIST[flowIndex]);
+  minitel.print(flowStr);
+  for (int i = flowStr.length(); i < FLOW_FIELD_WIDTH; i++) {
+    minitel.print(" ");
+  }
+}
+
+
+// Affiche la ligne de retour (option Q)
+void updateRS232Back() {
+  minitel.newXY(1,10);
+  // Affichage de la lettre 'Q'
+  minitel.attributs(CARACTERE_BLANC);
+  minitel.graphicMode();
+  minitel.writeByte(0x6A);
+  minitel.textMode();
+  minitel.attributs(INVERSION_FOND);
+  minitel.print("Q");
+  minitel.attributs(FOND_NORMAL);
+  minitel.graphicMode();
+  minitel.writeByte(0x35);
+  minitel.textMode();
+  minitel.print(" Save and Back to Main Menu");
+}
+
+
 
 
 String inputString(String defaultValue, int& exitCode) {
@@ -632,7 +803,7 @@ void showPrefs() {
   minitel.attributs(CARACTERE_BLANC); minitel.graphicMode(); minitel.writeByte(0x6A); minitel.textMode(); minitel.attributs(INVERSION_FOND); minitel.print("2"); minitel.attributs(FOND_NORMAL); minitel.graphicMode(); minitel.writeByte(0x35); minitel.textMode(); minitel.print("Pass: "); minitel.attributs(CARACTERE_CYAN); printPassword(password); clearLineFromCursor(); minitel.println();
   minitel.newXY(1,7);
   minitel.attributs(CARACTERE_BLANC); minitel.graphicMode(); minitel.writeByte(0x6A); minitel.textMode(); minitel.attributs(INVERSION_FOND); minitel.print("3"); minitel.attributs(FOND_NORMAL); minitel.graphicMode(); minitel.writeByte(0x35); minitel.textMode(); minitel.print("URL: "); minitel.attributs(CARACTERE_CYAN); printStringValue(url); clearLineFromCursor(); minitel.println();
-  minitel.newXY(1,9);
+  minitel.newXY(1,8);
   minitel.attributs(CARACTERE_BLANC); minitel.graphicMode(); minitel.writeByte(0x6A); minitel.textMode(); minitel.attributs(INVERSION_FOND); minitel.print("4"); minitel.attributs(FOND_NORMAL); minitel.graphicMode(); minitel.writeByte(0x35); minitel.textMode(); minitel.print("Scroll: "); writeBool(scroll); clearLineFromCursor();
   minitel.print("          ");
   minitel.attributs(CARACTERE_BLANC); minitel.graphicMode(); minitel.writeByte(0x6A); minitel.textMode(); minitel.attributs(INVERSION_FOND); minitel.print("C"); minitel.attributs(FOND_NORMAL); minitel.graphicMode(); minitel.writeByte(0x35); minitel.textMode(); minitel.print("Prestel: "); writeBool(prestel); clearLineFromCursor();
@@ -643,8 +814,9 @@ void showPrefs() {
   minitel.println();
   minitel.attributs(CARACTERE_BLANC); minitel.graphicMode(); minitel.writeByte(0x6A); minitel.textMode(); minitel.attributs(INVERSION_FOND); minitel.print("6"); minitel.attributs(FOND_NORMAL); minitel.graphicMode(); minitel.writeByte(0x35); minitel.textMode(); minitel.print("Col80 : "); writeBool(col80); clearLineFromCursor();
   minitel.println();
+  minitel.newXY(1,12);
+  minitel.attributs(CARACTERE_BLANC); minitel.graphicMode(); minitel.writeByte(0x6A); minitel.textMode(); minitel.attributs(INVERSION_FOND); minitel.print("7"); minitel.attributs(FOND_NORMAL); minitel.graphicMode(); minitel.writeByte(0x35); minitel.textMode(); minitel.print("Type    : "); writeConnectionType(connectionType);
   minitel.newXY(1,13);
-  minitel.attributs(CARACTERE_BLANC); minitel.graphicMode(); minitel.writeByte(0x6A); minitel.textMode(); minitel.attributs(INVERSION_FOND); minitel.print("7"); minitel.attributs(FOND_NORMAL); minitel.graphicMode(); minitel.writeByte(0x35); minitel.textMode(); minitel.print("Type    : "); writeConnectionType(connectionType); //clearLineFromCursor(); minitel.println();
   minitel.attributs(CARACTERE_BLANC); minitel.graphicMode(); minitel.writeByte(0x6A); minitel.textMode(); minitel.attributs(INVERSION_FOND); minitel.print("8"); minitel.attributs(FOND_NORMAL); minitel.graphicMode(); minitel.writeByte(0x35); minitel.textMode(); minitel.print("PingMS  : "); minitel.attributs(CARACTERE_CYAN); minitel.print(String(ping_ms)); clearLineFromCursor(); minitel.println();
   minitel.attributs(CARACTERE_BLANC); minitel.graphicMode(); minitel.writeByte(0x6A); minitel.textMode(); minitel.attributs(INVERSION_FOND); minitel.print("9"); minitel.attributs(FOND_NORMAL); minitel.graphicMode(); minitel.writeByte(0x35); minitel.textMode(); minitel.print("Subprot.: "); minitel.attributs(CARACTERE_CYAN); minitel.print(protocol); clearLineFromCursor(); minitel.println();
   //minitel.newXY(1,16);
@@ -656,6 +828,27 @@ void showPrefs() {
     if (sshPass != NULL && sshPass != "") {printPassword(sshPass);} 
   }
   clearLineFromCursor(); minitel.println();
+
+  // Ajout de l'entrée RS232 Settings (touche B) dans le menu de config
+  minitel.newXY(1,17); minitel.attributs(CARACTERE_BLANC); minitel.graphicMode(); minitel.writeByte(0x6A); minitel.textMode(); minitel.attributs(INVERSION_FOND); minitel.print("B"); minitel.attributs(FOND_NORMAL); minitel.graphicMode(); minitel.writeByte(0x35); minitel.textMode(); minitel.print("RS232   : ");
+  
+  // Conversion de la parité en chaîne
+  String parityStr;
+  if (rs232Parity == UART_PARITY_DISABLE)
+    parityStr = "N";
+  else if (rs232Parity == UART_PARITY_ODD)
+    parityStr = "O";
+  else
+    parityStr = "E";
+  
+  // Conversion du nombre de stop bits
+  String stopStr = (rs232StopBits == UART_STOP_BITS_1) ? "1" : "2";
+  
+  // Contrôle de flux
+  String flowStr = (rs232FlowCtrl == UART_HW_FLOWCTRL_CTS_RTS) ? "RTS/CTS" : "None";
+
+  minitel.print(String(rs232Baudrate) + " "); minitel.print(String(rs232DataBits + 5));minitel.print(parityStr);minitel.print(stopStr + " ");minitel.print(flowStr);
+
 
   minitel.newXY(1,18); minitel.writeByte(0x5F); minitel.repeat(3);
   minitel.newXY(1,19); minitel.print("{  }"); minitel.newXY(1,20); minitel.print("{  }");
@@ -681,6 +874,100 @@ void showPrefs() {
   minitel.attributs(CARACTERE_BLANC);
 
 }
+
+// Affiche l'écran de configuration RS232
+void showRS232Config() {
+  minitel.newScreen();
+  minitel.textMode();
+  minitel.noCursor();
+  minitel.smallMode();
+  minitel.attributs(GRANDEUR_NORMALE);
+  minitel.attributs(CARACTERE_BLANC);
+  minitel.attributs(FOND_NOIR);
+  minitel.noCursor();
+
+  // Titre en haut
+  minitel.newXY(1,0);
+  minitel.attributs(CARACTERE_ROUGE);
+  minitel.print("?:HELP");
+  minitel.cancel();
+  minitel.moveCursorDown(1);
+
+  minitel.newXY(9,1);
+  minitel.attributs(DOUBLE_HAUTEUR);
+  minitel.attributs(CARACTERE_JAUNE);
+  minitel.attributs(INVERSION_FOND);
+  minitel.print("  RS232 Configuration  ");
+
+  // Affichage des 5 paramètres avec leur update (B, D, P, S, F) et retour (Q)
+  updateRS232Baud();
+  updateRS232Data();
+  updateRS232Parity();
+  updateRS232Stop();
+  updateRS232Flow();
+  updateRS232Back();
+}
+
+// Permet de modifier les paramètres RS232 et revenir au menu principal
+void processRS232Config() {
+  showRS232Config();  // Affichage complet initial
+  bool done = false;
+  while (!done) {
+    unsigned long key = minitel.getKeyCode();
+    if (key != 0) {
+      switch (key) {
+        case 'B': case 'b': {
+          baudIndex = (baudIndex + 1) % (sizeof(BAUD_LIST)/sizeof(BAUD_LIST[0]));
+          rs232Baudrate = BAUD_LIST[baudIndex];
+          updateRS232Baud();
+          break;
+        }
+        case 'D': case 'd': {
+          dataIndex = (dataIndex + 1) % (sizeof(DATA_LIST)/sizeof(DATA_LIST[0]));
+          rs232DataBits = DATA_LIST[dataIndex] - 5;
+          updateRS232Data();
+          break;
+        }
+        case 'P': case 'p': {
+          parityIndex = (parityIndex + 1) % 3;
+          if (parityIndex == 0)
+            rs232Parity = UART_PARITY_DISABLE;
+          else if (parityIndex == 1)
+            rs232Parity = UART_PARITY_ODD;
+          else
+            rs232Parity = UART_PARITY_EVEN;
+          updateRS232Parity();
+          break;
+        }
+        case 'S': case 's': {
+          stopIndex = (stopIndex + 1) % 2;
+          rs232StopBits = (STOP_LIST[stopIndex] == 1) ? UART_STOP_BITS_1 : UART_STOP_BITS_2;
+          updateRS232Stop();
+          break;
+        }
+        case 'F': case 'f': {
+          flowIndex = (flowIndex + 1) % 2;
+          rs232FlowCtrl = (flowIndex == 1) ? UART_HW_FLOWCTRL_CTS_RTS : UART_HW_FLOWCTRL_DISABLE;
+          updateRS232Flow();
+          break;
+        }
+        case 'Q': case 'q': {
+          done = true; // Sauvegarde et retour au menu principal
+          break;
+        }
+        default:
+          break;
+      }
+    }
+  }
+  // À la sortie, revenir au menu principal
+  showPrefs();
+}
+
+
+
+
+
 
 void printPassword(String password) {
   if (password == NULL || password == "") {
@@ -772,7 +1059,7 @@ int setPrefs() {
       } else if (key == 'c' || key == 'C') {
         switchParameter(37, 9, prestel);
       } else if (key == '7') {
-        cycleConnectionType(14, 13);
+        cycleConnectionType(14, 12);
       } else if (key == '8') {
         uint16_t temp = ping_ms;
         setIntParameter(14, 14, temp);
@@ -808,6 +1095,8 @@ int setPrefs() {
         savePresets();
       } else if (key == 'l' || key == 'L') {
         loadPresets();
+      } else if (key == 'b' || key == 'B') {
+        processRS232Config();
       } else if (key == '?') {
         showHelp();
       } else {
@@ -933,7 +1222,7 @@ void displayPresets(String title) {
 }
 
 void cycleConnectionType(int x, int y) {
-  connectionType = (connectionType + 1) % 5; // 0: Telnet, 1: Websocket, 2: SSH, 3: Serial, 4: Bridge
+  connectionType = (connectionType + 1) % 5; // 0: Telnet, 1: Websocket, 2: SSH, 3: USB, 4: RS232
   minitel.newXY(x, y);
   writeConnectionType(connectionType);
 }
@@ -985,19 +1274,23 @@ int setParameter(int x, int y, String &destination, bool mask, bool allowBlank, 
   return exitCode;
 }
 
-void setIntParameter(int x, int y, uint16_t &destination) {
+template <typename T>
+void setIntParameter(int x, int y, T &destination) {
   String strParam = String(destination);
   if (strParam == "0") strParam = "";
-  minitel.newXY(x, y); minitel.attributs(CARACTERE_BLANC);
+  minitel.newXY(x, y);
+  minitel.attributs(CARACTERE_BLANC);
   minitel.print(strParam);
-  for (int i = 0; i < 41 - x - String(destination).length(); ++i) minitel.print(".");
+  for (int i = 0; i < 41 - x - String(destination).length(); ++i)
+    minitel.print(".");
   minitel.newXY(x, y);
   int exitCode = 0;
   String temp = inputString(strParam, exitCode, '.');
   if (!exitCode && temp.length() > 0) {
     destination = temp.toInt();
   }
-  minitel.newXY(x, y); minitel.attributs(CARACTERE_CYAN);
+  minitel.newXY(x, y);
+  minitel.attributs(CARACTERE_CYAN);
   minitel.print(String(destination));
   clearLineFromCursor();
 }
@@ -1034,7 +1327,7 @@ void writeConnectionType(byte connectionType) {
     minitel.attributs(CARACTERE_ROUGE);
     minitel.attributs(FOND_NORMAL);
   }
-  minitel.print("Websocket");
+  minitel.print("WS");
 
   minitel.attributs(CARACTERE_ROUGE);
   minitel.attributs(FOND_NORMAL);
@@ -1062,13 +1355,13 @@ void writeConnectionType(byte connectionType) {
     minitel.attributs(CARACTERE_ROUGE);
     minitel.attributs(FOND_NORMAL);
   }
-  minitel.print("Serial");
+  minitel.print("USB");
 
   minitel.attributs(CARACTERE_ROUGE);
   minitel.attributs(FOND_NORMAL);
   minitel.print("/");
 
-  // Bridge (nouveau mode)
+  // RS232 (nouveau mode)
   if (connectionType == 4) {
     minitel.attributs(CARACTERE_BLANC);
     minitel.attributs(INVERSION_FOND);
@@ -1076,7 +1369,7 @@ void writeConnectionType(byte connectionType) {
     minitel.attributs(CARACTERE_ROUGE);
     minitel.attributs(FOND_NORMAL);
   }
-  minitel.print("Bridge");
+  minitel.print("RS232");
 
   // Réinitialisation des attributs
   minitel.attributs(CARACTERE_BLANC);
