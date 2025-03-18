@@ -55,7 +55,7 @@ static int stopIndex   = 0; // 1 => STOP_LIST[0] = 1
 static int flowIndex   = 0; // RTS/CTS => FLOW_LIST[1]
 
 
-#define DEBUG true
+//#define DEBUG true
 #define DEBUG_PORT Serial
 
 #if DEBUG // Debug enabled
