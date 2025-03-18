@@ -30,14 +30,9 @@
 
 #define MINITEL_PORT Serial2
 
-#define RS232_PORT UART_NUM_2
+#define RS232_PORT UART_NUM_1
 
-// Paramètres RS232 configurables (valeurs par défaut)
-uint32_t rs232Baudrate  = 9600;
-uint16_t rs232DataBits  = UART_DATA_8_BITS;        // par exemple 8 bits
-uint16_t rs232Parity    = UART_PARITY_DISABLE;       // 0 = disable, 1 = odd, 2 = even
-uint16_t rs232StopBits  = UART_STOP_BITS_1;          // 1 ou 2
-uint16_t rs232FlowCtrl  = UART_HW_FLOWCTRL_CTS_RTS;    // 0 = disable, 1 = RTS/CTS
+bool rs232Initialized = false;
 
 // Liste des valeurs possibles pour chaque paramètre
 static const uint32_t BAUD_LIST[]    = { 300, 600, 1200, 2400, 4800, 9600, 19200, 28800, 38400, 57600, 115200 };
@@ -54,13 +49,13 @@ static const char*    FLOW_LIST[]    = { "None", "RTS/CTS" };
 
 // Indices courants pour chaque paramètre (pour naviguer facilement)
 static int baudIndex   = 5; // 9600 par défaut => BAUD_LIST[5] = 9600
-static int dataIndex   = 2; // 7 bits par défaut => DATA_LIST[2] = 7
+static int dataIndex   = 3; // 7 bits par défaut => DATA_LIST[2] = 7
 static int parityIndex = 0; // N => PARITY_LIST[0] = "N"
 static int stopIndex   = 0; // 1 => STOP_LIST[0] = 1
-static int flowIndex   = 1; // RTS/CTS => FLOW_LIST[1]
+static int flowIndex   = 0; // RTS/CTS => FLOW_LIST[1]
 
 
-// #define DEBUG true
+#define DEBUG true
 #define DEBUG_PORT Serial
 
 #if DEBUG // Debug enabled
@@ -104,13 +99,16 @@ String protocol("");
 String sshUser("");
 String sshPass("");
 String sshPrivKey("");
-
-byte connectionType = 0; // 0=Telnet 1=Websocket 2=SSH 3=Serial
+uint32_t rs232Baudrate  = 9600;
+uint16_t rs232DataBits  = UART_DATA_8_BITS;        // par exemple 8 bits
+uint16_t rs232Parity    = UART_PARITY_DISABLE;       // 0 = disable, 1 = odd, 2 = even
+uint16_t rs232StopBits  = UART_STOP_BITS_1;          // 1 ou 2
+uint16_t rs232FlowCtrl  = 0;    // 0 = disable, 1 = RTS/CTS
+byte connectionType = 0; // 0=Telnet 1=Websocket 2=SSH 3=Serial 4=RS232
 bool ssl = false;
 
 typedef struct {
   String presetName = "";
-  
   String url = "";
   bool scroll = false;
   bool echo = false;
@@ -124,9 +122,15 @@ typedef struct {
   String sshUser = "";
   String sshPass = "";
   String sshPrivKey = "";
+  // Ajout RS232
+  uint32_t rs232Baudrate  = 9600;
+  uint16_t rs232DataBits  = UART_DATA_8_BITS;        // par exemple 8 bits
+  uint16_t rs232Parity    = UART_PARITY_DISABLE;       // 0 = disable, 1 = odd, 2 = even
+  uint16_t rs232StopBits  = UART_STOP_BITS_1;          // 1 ou 2
+  uint16_t rs232FlowCtrl  = 0;    // 0 = disable, 1 = RTS/CTS
 } Preset;
 
-Preset presets[20];
+Preset presets[20]; // Slots A à T
 int speed;
 uint8_t wifiStatus;
 
@@ -154,6 +158,38 @@ void initFS() {
     "%% Mounted SPIFFS used=%d total=%d\r\n", SPIFFS.usedBytes(),
     SPIFFS.totalBytes());
 }
+
+
+// Initialise le port RS232 selon les paramètres courants
+void initRS232() {
+  uart_config_t uart_config = {
+    .baud_rate = rs232Baudrate,
+    .data_bits = (uart_word_length_t)rs232DataBits,
+    .parity    = (uart_parity_t)rs232Parity,
+    .stop_bits = (uart_stop_bits_t)rs232StopBits,
+    .flow_ctrl = (uart_hw_flowcontrol_t)rs232FlowCtrl,
+    .rx_flow_ctrl_thresh = 122,
+  };
+  uart_param_config(RS232_PORT, &uart_config);
+  // Affectation des broches : ici TX3=D25, RX3=D26, RTS2=D27, CTS2=D22
+  uart_set_pin(RS232_PORT, 25, 26, 27, 22);
+  
+  int ret = uart_driver_install(RS232_PORT, 2048, 0, 0, NULL, 0);
+  if (ret != ESP_OK) {
+    debugPrintf("uart_driver_install a retourné l'erreur %d\n", ret);
+  } else {
+    debugPrintln("Pilote UART RS232 initialisé");
+    rs232Initialized = true;
+  }
+}
+
+// Désinstalle le pilote RS232
+void deinitRS232() {
+  uart_driver_delete(RS232_PORT);
+  rs232Initialized = false;
+  debugPrintln("Pilote UART RS232 désinstallé");
+}
+
 
 // ESP_RST_POWERON = 1 = pressed hardware reset button
 // ESP_RST_SW      = 3 = called ESP.restart() function
@@ -331,65 +367,46 @@ void setup() {
 }
 
 void loop() {
-  if (connectionType == 0) // TELNET
+  if (connectionType == 0) { // TELNET
     loopTelnet();
-  else if (connectionType == 1) // WEBSOCKET
+  } else if (connectionType == 1) { // WEBSOCKET
     loopWebsocket();
-  else if (connectionType == 2) // SSH
+  } else if (connectionType == 2) { // SSH
     loopSsh();
-  else if (connectionType == 3) // SERIAL
+  } else if (connectionType == 3) { // SERIAL
     loopSerial();
-  else if (connectionType == 4)  // RS232
+  } else if (connectionType == 4) { // RS232
+    if (!rs232Initialized) {initRS232();}
     loopRS232();
+  }
 }
 
+// Fonction équivalente à loopTelnet() mais pour RS232_PORT
 void loopRS232() {
-  uart_config_t uart_config = {
-    .baud_rate = rs232Baudrate,
-    .data_bits = (uart_word_length_t)rs232DataBits,
-    .parity    = (uart_parity_t)rs232Parity,
-    .stop_bits = (uart_stop_bits_t)rs232StopBits,
-    .flow_ctrl = (uart_hw_flowcontrol_t)rs232FlowCtrl,
-    .rx_flow_ctrl_thresh = 122,
-  };
-  uart_param_config(RS232_PORT, &uart_config);
-  uart_set_pin(RS232_PORT, 25, 26, 27, 14);  // TX=25, RX=26, RTS=27, CTS=14
-  uart_driver_install(RS232_PORT, 2048, 0, 0, NULL, 0);
-
-  uint8_t buf[128], buf2[128];
-
-  while (connectionType == 4) {  // Tant que le mode RS232 est actif
-    int len = 0;
-    // Utilisation de MINITEL_PORT pour lire les données, car il expose available() et read()
-    while (MINITEL_PORT.available() > 0 && len < sizeof(buf)) {
-      buf[len++] = MINITEL_PORT.read();
-    }
-    if (len > 0) {
-      uart_write_bytes(RS232_PORT, (const char*)buf, len);
-    }
-    
-    int len2 = uart_read_bytes(RS232_PORT, buf2, sizeof(buf2), 20 / portTICK_PERIOD_MS);
-    if (len2 > 0) {
-      // On peut également utiliser MINITEL_PORT.write() directement
-      MINITEL_PORT.write(buf2, len2);
-    }
-    
-    // Vérification pour sortir du mode RS232 (par exemple, CTRL+R)
-    if (MINITEL_PORT.available() > 0) {
-      byte key = MINITEL_PORT.read();
-      if (key == 18) {  // CTRL+R
-        break;
-      }
-    }
+  // On suppose que le pilote a déjà été installé dans initRS232()
+  // On lit une donnée depuis RS232_PORT
+  uint8_t rs232Byte;
+  int len = uart_read_bytes(RS232_PORT, &rs232Byte, 1, 10 / portTICK_PERIOD_MS);
+  
+  if (len > 0) {
+    minitel.writeByte(rs232Byte);
+    debugPrintf("[RS232] Reçu sur RS232_PORT : 0x%X\n", rs232Byte);
   }
-  uart_driver_delete(RS232_PORT);
-  // Réinitialisation de l'interface Minitel après le mode RS232
-  modeVideotex();
-  minitel.newXY(1, 1);
-  minitel.newScreen();
-  minitel.echo(true);
-  minitel.pageMode();
-  reset();
+  
+  // On lit une donnée depuis MINITEL_PORT et on l'envoie sur RS232_PORT
+  if (MINITEL_PORT.available() > 0) {
+    byte mData = minitel.readByte();
+    // Si CTRL+R (code 18) est détecté, on quitte le mode RS232
+    if (mData == 18 || (functionKey && mData == 0x49)) {
+      debugPrintln("[RS232] CTRL+R détecté sur MINITEL_PORT, fin de communication RS232");
+      deinitRS232();
+      // Ici vous pouvez réinitialiser le Minitel ou revenir au menu principal
+      reset();
+    }
+    functionKey = (mData == 0x13);
+    uart_write_bytes(RS232_PORT, (const char*)&mData, 1);
+    debugPrintf("[RS232] Envoyé depuis MINITEL_PORT vers RS232_PORT : 0x%X\n", mData);
+  }
 }
 
 
@@ -749,6 +766,11 @@ void loadPrefs() {
   sshUser = prefs.getString("sshUser", "");
   sshPass = prefs.getString("sshPass", "");
   sshPrivKey = prefs.getString("sshPrivKey", "");
+  rs232Baudrate = prefs.getInt("rs232Baudrate", 9600);
+  rs232DataBits = prefs.getInt("rs232DataBits", UART_DATA_8_BITS);
+  rs232Parity   = prefs.getInt("rs232Parity", UART_PARITY_DISABLE);
+  rs232StopBits = prefs.getInt("rs232StopBits", UART_STOP_BITS_1);
+  rs232FlowCtrl = prefs.getInt("rs232FlowCtrl", 0);
   prefs.end();
 }
 
@@ -769,6 +791,11 @@ void savePrefs() {
   if (prefs.getString("sshUser", "")    != sshUser)     prefs.putString("sshUser",    sshUser);
   if (prefs.getString("sshPass", "")    != sshPass)     prefs.putString("sshPass",    sshPass);
   if (prefs.getString("sshPrivKey", "") != sshPrivKey)  prefs.putString("sshPrivKey", sshPrivKey);
+  if (prefs.getInt("rs232Baudrate", 9600) != rs232Baudrate)    prefs.putInt("rs232Baudrate", rs232Baudrate);
+  if (prefs.getInt("rs232DataBits", UART_DATA_8_BITS) != rs232DataBits)   prefs.putInt("rs232DataBits", rs232DataBits);
+  if (prefs.getInt("rs232Parity", UART_PARITY_DISABLE) != rs232Parity)    prefs.putInt("rs232Parity", rs232Parity);
+  if (prefs.getInt("rs232StopBits", UART_STOP_BITS_1) != rs232StopBits)   prefs.putInt("rs232StopBits", rs232StopBits);
+  if (prefs.getInt("rs232FlowCtrl", 0) != rs232FlowCtrl)    prefs.putInt("rs232FlowCtrl", rs232FlowCtrl);
   prefs.end();
 }
 
@@ -925,7 +952,7 @@ void processRS232Config() {
         }
         case 'D': case 'd': {
           dataIndex = (dataIndex + 1) % (sizeof(DATA_LIST)/sizeof(DATA_LIST[0]));
-          rs232DataBits = DATA_LIST[dataIndex] - 5;
+          rs232DataBits = DATA_LIST[dataIndex];
           updateRS232Data();
           break;
         }
@@ -961,9 +988,9 @@ void processRS232Config() {
       }
     }
   }
-  // À la sortie, revenir au menu principal
   showPrefs();
 }
+
 
 
 
@@ -1141,6 +1168,7 @@ void savePresets() {
         minitel.newXY(3, 4+slot); minitel.print(presets[slot].presetName);
         continue;
       }
+      
       // save preset
       presets[slot].presetName = presetName;
       presets[slot].url = url;
@@ -1156,6 +1184,12 @@ void savePresets() {
       presets[slot].sshUser = sshUser;
       presets[slot].sshPass = sshPass;
       presets[slot].sshPrivKey = sshPrivKey;
+      // paramètres RS232 actuels
+      presets[slot].rs232Baudrate = rs232Baudrate;
+      presets[slot].rs232DataBits = rs232DataBits;
+      presets[slot].rs232Parity   = rs232Parity;
+      presets[slot].rs232StopBits = rs232StopBits;
+      presets[slot].rs232FlowCtrl = rs232FlowCtrl;
       writePresets();
     }
   } while (true);
@@ -1197,7 +1231,12 @@ void loadPresets() {
       sshUser = presets[slot].sshUser;
       sshPass = presets[slot].sshPass;
       sshPrivKey = presets[slot].sshPrivKey;
-
+      // Appliquer aussi les paramètres RS232 du preset
+      rs232Baudrate = presets[slot].rs232Baudrate;
+      rs232DataBits = presets[slot].rs232DataBits;
+      rs232Parity   = presets[slot].rs232Parity;
+      rs232StopBits = presets[slot].rs232StopBits;
+      rs232FlowCtrl = presets[slot].rs232FlowCtrl;
       minitel.attributs(CARACTERE_CYAN); minitel.attributs(FOND_NORMAL);
       minitel.newXY(3, 4+slot); minitel.print(presets[slot].presetName);
 
@@ -1668,6 +1707,12 @@ void writePresets() {
     doc["sshUser"] = presets[i].sshUser;
     doc["sshPass"] = presets[i].sshPass;
     doc["sshPrivKey"] = presets[i].sshPrivKey;
+    // Paramètres RS232
+    doc["rs232Baudrate"] = presets[i].rs232Baudrate;
+    doc["rs232DataBits"] = presets[i].rs232DataBits;
+    doc["rs232Parity"] = presets[i].rs232Parity;
+    doc["rs232StopBits"] = presets[i].rs232StopBits;
+    doc["rs232FlowCtrl"] = presets[i].rs232FlowCtrl;
 
     if (serializeJson(doc, file) == 0) {
       debugPrintln(F("Failed to write to file"));
@@ -1699,6 +1744,12 @@ void readPresets() {
       presets[i].sshUser = "";
       presets[i].sshPass = "";
       presets[i].sshPrivKey = "";
+      // Paramètres RS232
+      presets[i].rs232Baudrate = doc["rs232Baudrate"] | 9600;
+      presets[i].rs232DataBits = doc["rs232DataBits"] | 8;
+      presets[i].rs232Parity   = doc["rs232Parity"]   | UART_PARITY_DISABLE;
+      presets[i].rs232StopBits = doc["rs232StopBits"] | UART_STOP_BITS_1;
+      presets[i].rs232FlowCtrl = doc["rs232FlowCtrl"] | 0;
     } else {
       String _presetName = doc["presetName"]; presets[i].presetName = _presetName == "null" ? "" : _presetName;
       String _url = doc["url"]; presets[i].url = _url == "null" ? "" : _url;
