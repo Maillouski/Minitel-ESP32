@@ -3,27 +3,11 @@
 ## SOFTWARE
 
 This branch adds functionality for a second MAX3232 serial port to use the adapter to connect to almost anykind of computer / device through Hardware RS232 connection
-This repo aims at gather helpfull sample codes for Minitel apps development using ESP32.
-
-It is not intended to provide final application for given use case.
-
-Sample codes are given :
-
-* [Arduino IDE](arduino)
-* [MicroPython](upython)
 
 ## HARDWARE
 
 Example schematic is provided to connect  cheap ESP32 modules to the minitel.
 
-Minitel-ESP32 dev board is under CC-BY-SA 4,0
-
 Schematic and Gerber are provided
 
 ## EXTERNAL LINKS
-
-* Demo video : https://youtu.be/iOB85X8F1vI
-* Hackaday's project page : https://hackaday.io/project/180473
-* Tindie's page: https://www.tindie.com/products/25418/
-
-<a href="https://www.tindie.com/stores/iodeo"><img src="https://d2ss6ovg47m0r5.cloudfront.net/badges/tindie-larges.png" alt="I sell on Tindie" width="200" height="104"></a>
