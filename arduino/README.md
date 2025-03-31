@@ -13,8 +13,7 @@ https://espressif.github.io/arduino-esp32/package_esp32_index.json
 https://github.com/Links2004/arduinoWebSockets
 https://github.com/bblanchon/ArduinoJson
 https://github.com/ewpa/LibSSH-ESP32
-https://github.com/iodeo/Minitel1B_Hard
-(forked from https://github.com/eserandour/Minitel1B_Hard)
+https://github.com/iodeo/Minitel1B_Hard (forked from https://github.com/eserandour/Minitel1B_Hard)
 
 ## IMPORTANT WARNING
 
