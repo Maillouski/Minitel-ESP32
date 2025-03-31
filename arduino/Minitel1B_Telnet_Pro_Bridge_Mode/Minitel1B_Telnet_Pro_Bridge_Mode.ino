@@ -81,7 +81,7 @@ TaskHandle_t sshTaskHandle;
 // WiFi credentials
 String ssid("");
 String password("");
-
+String currentPresetName = "";  // assignée lors du chargement du preset
 bool advanced = false; // false=Minitel1, true=Minitel1B or above
 bool functionKey = false; // flag use when reading keyboard byte by byte
 String url("");
@@ -301,6 +301,7 @@ void setup() {
       if (xReturned!=pdPASS) debugPrintf("  > Failed to create task\n");
 
     } else if (connectionType == 3) { // Serial ------------------------------------------------------------------------------------
+
 #ifdef DEBUG
       debugPrintf("Serial redirection at %u bauds - 7E1\n", speed);
       debugPrintf("*** Debug end ***\n");
@@ -319,7 +320,7 @@ void setup() {
       minitel.println("  * Parity   : E");
       minitel.println("  * Stop bit : 1");
       minitel.println(); minitel.println();
-      minitel.println(" Ctrl+R to restart");
+      minitel.println(" Ctrl+R to hangup");
       delay(advanced ? 2000 : 3000); // ok to use as no wifi is involved here
       minitel.cursor();
     }  // --------------------------------------------------------------------------------------------------------------------------
@@ -751,6 +752,7 @@ unsigned int numberOfChars(String str) {
 void loadPrefs() {
   prefs.begin("telnet-pro", true);
   debugPrintln("freeEntries = " + String(prefs.freeEntries()));
+  currentPresetName = prefs.getString("presetName", "Minitel Telnet Pro");
   ssid = prefs.getString("ssid", "");
   password = prefs.getString("password", "");
   url = prefs.getString("url", "");
@@ -776,6 +778,9 @@ void loadPrefs() {
 
 void savePrefs() {
   prefs.begin("telnet-pro", false);
+  // Enregistrer le nom du preset (currentPresetName)
+  if (prefs.getString("presetName", "") != currentPresetName) 
+      prefs.putString("presetName", currentPresetName);
   if (prefs.getString("ssid",     "") != ssid)     prefs.putString("ssid", ssid);
   if (prefs.getString("password", "") != password) prefs.putString("password", password);
   if (prefs.getString("url",      "") != url)      prefs.putString("url", url);
@@ -819,15 +824,27 @@ void showPrefs() {
   minitel.smallMode();
   minitel.attributs(GRANDEUR_NORMALE); minitel.attributs(CARACTERE_BLANC); minitel.attributs(FOND_NOIR); minitel.noCursor();
   minitel.newXY(1,0); minitel.attributs(CARACTERE_ROUGE); minitel.print("?:HELP"); minitel.cancel(); minitel.moveCursorDown(1);
-  minitel.newXY(9, 1);
-  minitel.attributs(FIN_LIGNAGE);
-  minitel.textMode();
-  minitel.attributs(DOUBLE_HAUTEUR); minitel.attributs(CARACTERE_JAUNE); minitel.attributs(INVERSION_FOND); minitel.print("  Minitel Telnet Pro  ");
+  // Titre centré
+  String title = "Minitel Telnet Pro";
+  int offset = (40 - title.length()) / 2;
+  if (offset < 1) offset = 1;
+  minitel.newXY(offset, 1);
+  minitel.attributs(DOUBLE_HAUTEUR);
+  minitel.attributs(CARACTERE_JAUNE);
+  //minitel.attributs(INVERSION_FOND);
+  minitel.print(title);
   minitel.newXY(34,2); minitel.attributs(CARACTERE_ROUGE); minitel.print(String(speed)); minitel.print("bps");
   showWifiStatus();
-  minitel.newXY(1,4);
-  minitel.attributs(CARACTERE_BLANC); minitel.graphicMode(); minitel.writeByte(0x6A); minitel.textMode(); minitel.attributs(INVERSION_FOND); minitel.print("1"); minitel.attributs(FOND_NORMAL); minitel.graphicMode(); minitel.writeByte(0x35); minitel.textMode(); minitel.print("SSID: "); minitel.attributs(CARACTERE_CYAN); printStringValue(ssid); clearLineFromCursor(); minitel.println();
-  minitel.attributs(CARACTERE_BLANC); minitel.graphicMode(); minitel.writeByte(0x6A); minitel.textMode(); minitel.attributs(INVERSION_FOND); minitel.print("2"); minitel.attributs(FOND_NORMAL); minitel.graphicMode(); minitel.writeByte(0x35); minitel.textMode(); minitel.print("Pass: "); minitel.attributs(CARACTERE_CYAN); printPassword(password); clearLineFromCursor(); minitel.println();
+  minitel.newXY(1,3);
+  //minitel.attributs(CARACTERE_BLANC); minitel.graphicMode(); minitel.writeByte(0x6A); minitel.textMode(); minitel.attributs(INVERSION_FOND); minitel.print("1"); minitel.attributs(FOND_NORMAL); minitel.graphicMode(); minitel.writeByte(0x35); minitel.textMode(); minitel.print(" Configure Wifi");
+  // Titre centré : on récupère le presetName
+  offset = (40 - currentPresetName.length()) / 2;
+  if (offset < 1) offset = 1;
+  minitel.newXY(offset, 5);
+  minitel.attributs(DOUBLE_HAUTEUR);
+  minitel.attributs(CARACTERE_BLANC);
+  minitel.attributs(INVERSION_FOND);
+  minitel.print(currentPresetName);
   minitel.newXY(1,7);
   minitel.attributs(CARACTERE_BLANC); minitel.graphicMode(); minitel.writeByte(0x6A); minitel.textMode(); minitel.attributs(INVERSION_FOND); minitel.print("3"); minitel.attributs(FOND_NORMAL); minitel.graphicMode(); minitel.writeByte(0x35); minitel.textMode(); minitel.print("URL: "); minitel.attributs(CARACTERE_CYAN); printStringValue(url); clearLineFromCursor(); minitel.println();
   minitel.newXY(1,8);
@@ -881,20 +898,20 @@ void showPrefs() {
   minitel.newXY(1,19); minitel.print("{  }"); minitel.newXY(1,20); minitel.print("{  }");
   minitel.newXY(1,21); minitel.writeByte(0x7E); minitel.repeat(3);
   minitel.newXY(2,19); minitel.attributs(CARACTERE_BLANC); minitel.attributs(DOUBLE_GRANDEUR); minitel.print("S");
-  minitel.newXY(6,19); minitel.attributs(DOUBLE_HAUTEUR); minitel.print("Save Preset");
+  minitel.newXY(6,19); minitel.attributs(DOUBLE_HAUTEUR); minitel.print("Save Connexion");
 
   int delta=24;
-  minitel.newXY(1+delta,18); minitel.writeByte(0x5F); minitel.repeat(3);
-  minitel.newXY(1+delta,19); minitel.print("{  }"); minitel.newXY(1+delta,20); minitel.print("{  }");
-  minitel.newXY(1+delta,21); minitel.writeByte(0x7E); minitel.repeat(3);
-  minitel.newXY(2+delta,19); minitel.attributs(CARACTERE_BLANC); minitel.attributs(DOUBLE_GRANDEUR); minitel.print("L");
-  minitel.newXY(6+delta,19); minitel.attributs(DOUBLE_HAUTEUR); minitel.print("Load Preset");
+  minitel.newXY(-2+delta,18); minitel.writeByte(0x5F); minitel.repeat(3);
+  minitel.newXY(-2+delta,19); minitel.print("{  }"); minitel.newXY(-2+delta,20); minitel.print("{  }");
+  minitel.newXY(-2+delta,21); minitel.writeByte(0x7E); minitel.repeat(3);
+  minitel.newXY(-1+delta,19); minitel.attributs(CARACTERE_BLANC); minitel.attributs(DOUBLE_GRANDEUR); minitel.print("L");
+  minitel.newXY(3+delta,19); minitel.attributs(DOUBLE_HAUTEUR); minitel.print("Load Phonebook");
 
   minitel.attributs(GRANDEUR_NORMALE);
   minitel.attributs(CARACTERE_JAUNE); 
   minitel.newXY(1,22);
   minitel.attributs(INVERSION_FOND); minitel.print(" SPACE "); minitel.attributs(FOND_NORMAL); minitel.print(" to connect   ");
-  minitel.attributs(INVERSION_FOND); minitel.print(" CTRL+R "); minitel.attributs(FOND_NORMAL); minitel.print(" to restart");
+  minitel.attributs(INVERSION_FOND); minitel.print(" CTRL+R "); minitel.attributs(FOND_NORMAL); minitel.print(" to hangup");
   //minitel.newXY(24,23); minitel.print("or TS+CONNEXION");
 
   minitel.newXY(1,23); minitel.attributs(CARACTERE_ROUGE); minitel.print("(C) 2023 Louis H., Francesco Sblendorio");
@@ -902,6 +919,97 @@ void showPrefs() {
   minitel.attributs(CARACTERE_BLANC);
 
 }
+
+void wifiConfig() {
+  bool done = false;
+  while (!done) {
+    // Écran de base
+    minitel.newScreen();
+    minitel.textMode();
+    minitel.noCursor();
+    minitel.smallMode();
+    minitel.attributs(GRANDEUR_NORMALE);
+    minitel.attributs(CARACTERE_BLANC);
+    minitel.attributs(FOND_NOIR);
+
+    // Titre centré (40 colonnes)
+    String title = "WiFi Configuration";
+    int offset = (40 - title.length()) / 2;
+    if (offset < 1) offset = 1;
+    minitel.newXY(offset, 1);
+    minitel.attributs(DOUBLE_HAUTEUR);
+    minitel.attributs(CARACTERE_JAUNE);
+    minitel.attributs(INVERSION_FOND);
+    minitel.print(title);
+
+    // Option 1: SSID
+    // Affichage du bloc pour la touche "1"
+    minitel.newXY(1, 3);
+    minitel.attributs(FOND_BLANC);
+    minitel.attributs(CARACTERE_NOIR);
+    minitel.print(" 1 ");  // bloc de 3 colonnes
+    // Affichage du libellé sur fond noir
+    minitel.newXY(5, 3);
+    minitel.attributs(FOND_NOIR);
+    minitel.attributs(CARACTERE_BLANC);
+    minitel.print(": SSID: ");
+    minitel.attributs(CARACTERE_CYAN);
+    minitel.print(ssid);
+
+    // Option 2: Pass
+    minitel.newXY(1, 5);
+    minitel.attributs(FOND_BLANC);
+    minitel.attributs(CARACTERE_NOIR);
+    minitel.print(" 2 ");
+    minitel.newXY(5, 5);
+    minitel.attributs(FOND_NOIR);
+    minitel.attributs(CARACTERE_BLANC);
+    minitel.print(": Pass: ");
+    minitel.attributs(CARACTERE_CYAN);
+    printPassword(password);
+
+    // Option Q: Save and Quit
+    minitel.newXY(1, 7);
+    minitel.attributs(FOND_BLANC);
+    minitel.attributs(CARACTERE_NOIR);
+    minitel.print(" Q ");
+    minitel.newXY(5, 7);
+    minitel.attributs(FOND_NOIR);
+    minitel.attributs(CARACTERE_BLANC);
+    minitel.print(": Save and Quit");
+
+    // Attente d'une touche sans rafraîchissement continu
+    char key = 0;
+    while ((key = minitel.getKeyCode()) == 0) {
+      delay(10);
+    }
+    if (key == '1') {
+      minitel.newXY(1, 9);
+      minitel.attributs(CARACTERE_BLANC);
+      minitel.print("Enter new SSID: ");
+      String newSSID = inputString(ssid, *(new int(0)));
+      if (newSSID.length() > 0) ssid = newSSID;
+    }
+    else if (key == '2') {
+      minitel.newXY(1, 9);
+      minitel.attributs(CARACTERE_BLANC);
+      minitel.print("Enter new Pass: ");
+      String newPass = inputString(password, *(new int(0)), '*');
+      if (newPass.length() > 0) password = newPass;
+    }
+    else if (key == 'Q' || key == 'q') {
+      done = true;
+    }
+    delay(200); // anti-rebond
+  }
+  savePrefs();
+  showPrefs();
+}
+
+
+
+
+
 
 // Affiche l'écran de configuration RS232
 void showRS232Config() {
@@ -1063,13 +1171,7 @@ int setPrefs() {
         minitel.pageMode();
         reset();
       } else if (key == '1') {
-        if (setParameter(10, 4, ssid, false, false) == 0) wifiStatus = WIFI_BEGIN;
-      } else if (key == '2') {
-        if (setParameter(10, 5, password, true, false) == 0) wifiStatus = WIFI_BEGIN;
-        if (password.length() <= 31) {
-          minitel.newXY(1, 6);
-          clearLineFromCursor();
-        }
+        wifiConfig();
       } else if (key == '3') {
         setParameter(9, 7, url, false, false);
         if (url.length() <= 40 - 9) {
@@ -1198,7 +1300,7 @@ void savePresets() {
 
 void loadPresets() {
   uint32_t key;
-  displayPresets("Load from slot");
+  displayPresets("Phonebook");
   do { 
     minitel.newXY(1,24); minitel.attributs(CARACTERE_VERT); minitel.print("  Choose slot, ESC or SUMMARY to go back");
     minitel.smallMode();
@@ -1217,7 +1319,7 @@ void loadPresets() {
       minitel.attributs(CARACTERE_BLANC); minitel.attributs(INVERSION_FOND);
       minitel.newXY(3, 4+slot); minitel.print(presets[slot].presetName);
       delay(500);
-
+      currentPresetName = presets[slot].presetName;
       url = presets[slot].url;
       scroll = presets[slot].scroll;
       echo = presets[slot].echo;
@@ -1247,10 +1349,12 @@ void loadPresets() {
 }
 
 void displayPresets(String title) {
+  int offset = (40 - title.length()) / 2;
+  if (offset < 0) offset = 0;
   static char *alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  minitel.newScreen(); minitel.newXY(1,1);
-  minitel.attributs(DOUBLE_HAUTEUR);
-  minitel.attributs(CARACTERE_CYAN); minitel.print(title);
+  minitel.newScreen(); 
+  minitel.newXY(offset, 1);
+  minitel.attributs(DOUBLE_HAUTEUR);minitel.attributs(CARACTERE_CYAN); minitel.print(title);
   minitel.newXY(1,4);
   for (int i=0; i<20; ++i) {
     minitel.attributs(CARACTERE_BLANC);
